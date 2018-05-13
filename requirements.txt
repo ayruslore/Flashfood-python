@@ -1,0 +1,7 @@
+bottle
+pandas
+redis
+googlemaps
+requests
+geopy
+pottery
