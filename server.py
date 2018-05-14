@@ -1,10 +1,11 @@
 import bottle
 import json
-import googlemaps
+#import googlemaps
 import math
 import random
+import requests
 import pandas as pd
-from geopy.distance import vincenty
+from geopy import distance, Point
 from bottle import get, post, request, run, install, response , route
 from redis import Redis as red
 from pottery import RedisDict as redDict
@@ -66,24 +67,26 @@ pot_arc = red.from_url('http://localhost:6379/1')
 
 rest_ids = NextId(key='rest-ids', masters={pot_con})
 
+nodeurl = 'https://719df726.ngrok.io'
+
 #string encode with b prefix
 def bytify(strung):
-	return bytes(strung, encoding = "ascii")
+    return bytes(strung, encoding = "ascii")
 
 def byte2string(strung):
-	return strung.decode('utf-8')
+    return strung.decode('utf-8')
 
 def byte2int(strung):
-	return int(byte2string(strung))
+    return int(byte2string(strung))
 
 def byte2float(strung):
-	return float(byte2string(strung))
+    return float(byte2string(strung))
 
 def get_geocode(lat,longi):
-    gmaps = googlemaps.Client(key='AIzaSyDUam4I3cjx6djDxijubOHrwfr7zzZt5Sg')
-    reverse_geocode_result = gmaps.reverse_geocode((lat,longi))
-    print(reverse_geocode_result[0]['formatted_address'])
-    return reverse_geocode_result[0]['formatted_address']
+    #gmaps = googlemaps.Client(key='AIzaSyDUam4I3cjx6djDxijubOHrwfr7zzZt5Sg')
+    #reverse_geocode_result = gmaps.reverse_geocode((lat,longi))
+    #print(reverse_geocode_result[0]['formatted_address'])
+    return 'x'
 
 '''
 User: pottery dictionary
@@ -105,8 +108,10 @@ def saved_address(sender):
 
 @post('/addUser')  #post request to add the user details.
 def addUser():
+    global Rest
     body = request.json
     key = "user:" + str(body['ID']) + ":details"
+    sender = str(body['ID'])
     body.pop('ID')
     user = redDict(redis = pot_con, key = key)
     arch = redDict(redis = pot_arc, key = key)
@@ -119,9 +124,9 @@ def addUser():
         body['subscribed'] = user['subscribed']
     if('decoded_address' not in user):
         if('lat' and 'long' in user):
+            get_cluster_hotel(sender,user['lat'],user['long'])
             s = str(get_geocode(int(user['lat']),int(user['long'])))
             user['decoded_address'] = '26/C, Hosur Road, Electronics City Phase 1, Electronic City, Bengaluru, Karnataka 560100'
-            #print(5,user['decoded_address'])
             body['decoded_address'] = user['decoded_address']
             body['location'] = 1
         else:
@@ -177,11 +182,11 @@ def deleteUser(UserId):
 @post('/updateuser')
 def updateUser():
     body = request.json
-	key = "user:" + str(body["Id"]) + ":details"
+    key = "user:" + str(body["Id"]) + ":details"
     user = redDict(redis = pot_con, key = key)
     for key in body:
-		if key != 'id':
-			user[key] = body[key]
+        if key != 'id':
+            user[key] = body[key]
 
 Restaurant: pottery dictionary
 -name
@@ -197,8 +202,12 @@ Restaurant: pottery dictionary
 {"phone": 963852741, "long": 77.665583, "ID": 3, "name": "New Punjabi Food Corner", "lat": 12.844706, "radius": 5}
 '''
 
+global Rest
+Rest = []
+
 @post('/addrest')
 def addRestaurant():
+    global Rest
     body = request.json
     rest_id = next(rest_ids)
     key = "rest:"+str(rest_id)+":details"
@@ -207,6 +216,7 @@ def addRestaurant():
     body['ID'] = rest_id
     for key in body:
         rest[key] = body[key]
+    Rest.append({'name':rest['name'], 'ID':rest_id, 'lat':rest['lat'], 'long':rest['long'],'radius':rest['radius']})
     print(json.dumps(body))
     yield json.dumps(body)
 
@@ -232,17 +242,24 @@ Offers
 -offerPrice
 -link
 '''
+
 global OffersDB
-OffersDB = pd.DataFrame(data = {}, columns = ['ID','restID','dish','qty_sold','qty_left','type','originalPrice','offerPrice','link','restName'])
+OffersDB = pd.DataFrame(data = {}, columns = ['ID','restID','dish','qty_sold','qty_left','type','originalPrice','offerPrice','link','restName','tag'])
 global offerRests
 offerRests = []
 
 
+def dynamicoffers():
+    return 'asdfghjkl'
+
 @post('/addOffers')
 def addOffer():
-    global OffersDB,offerRests
+    global OffersDB,offerRests,Rest
     Offers = []
     body = request.json
+    rests = []
+    ide = []
+    print(2)
     for i in range(len(body['data'])):
         body['data'][i]['ID'] = random.randint(100,999)
         key = "rest:"+str(body['data'][i]['restID'])+":details"
@@ -250,11 +267,47 @@ def addOffer():
         body['data'][i]['restName'] = rest['name']
         body['data'][i]['link'] = 'http://genii.ai/activebots/Babadadhaba/img/db/' + body['data'][i]['dish'].replace(" ","-") + ".jpg"
         Offers.append(body['data'][i])
+        print(3)
+        if(rest['name'] not in rests):
+            rests.append(rest['name'])
         if(body['data'][i]['restID'] not in offerRests):
             offerRests.append(body['data'][i]['restID'])
+        if(body['data'][i]['restID'] not in ide):
+            ide.append(body['data'][i]['restID'])
+    print(4)
     DB = pd.read_json(json.dumps(Offers),orient='records')
+    print(5)
     OffersDB = OffersDB.append(DB, ignore_index = True)
+    print(6)
     yield "Successfully added dishes."
+    send_data(ide,rests,DB)
+    print(10)
+
+def send_data(ide,rest,db):
+    data = {'sender':['1389212674465596', '1699572286720160']}
+    print(9)
+    for i in range(len(ide)):
+        restcluster = redList(redis = pot_con, key = 'Rest_cluster:'+str(ide[i])+':'+rest[i])
+        if(len(restcluster)!=0):
+            for sender in restcluster:
+                data['sender'].append(sender)
+            print(8)
+    db.drop(['restID','ID','type','qty_left','qty_sold','tag'],axis = 1, inplace = True)
+    head = {'Content-Type': 'application/json'}
+    print(7)
+    data['offers'] = (db.head(n=10)).to_json(orient = 'records')
+    print(1)
+    requests.post(url=nodeurl + "/dynamicOffers",data = json.dumps(data),headers=head)
+
+def get_cluster_hotel(sender,lat,longi):
+    global Rest
+    for rest in Rest:
+        p1 = Point(lat+" "+longi)
+        dist = distance.distance(Point(rest['lat']+" "+rest['long']),p1).kilometers
+        #if(dist <= rest['radius']):
+        key = 'Rest_cluster:' + rest['ID'] + ':' + rest['name']
+        restcluster = redList(redis = pot_con, key = key)
+        restcluster.append(sender)
 
 def getnearestRest(sender):
     global offerRests
@@ -279,7 +332,20 @@ def getnearestRest(sender):
     return result
 
 
-@get('/offers/<area>')
+@get('/offers/<sender>/<v_n>')
+def offerfilter(sender,v_n):
+    global OffersDB
+    restaurants = getnearestRest(sender)
+    print(restaurants)
+    newdf = pd.DataFrame(data = {}, columns = ['ID','restID','dish','qty_sold','qty_left','type','originalPrice','offerPrice','link','restName','tag'])
+    for rest in restaurants:
+        newdf.append(OffersDB[OffersDB['restName']==rest],ignore_index = True)
+    sortedb = OffersDB.sort_values(['offerPrice'],ascending=True)
+    mask = sortedb.tag.apply(lambda x : v_n in x)
+    sortedb = sortedb[mask]
+    sortedb.drop(['restID','ID','type','qty_left','qty_sold','tag'],axis = 1, inplace = True)
+    print((sortedb.head(n=10)).to_json(orient = 'records'))
+    yield (sortedb.head(n=10)).to_json(orient = 'records')
 
 
 @get('/getOffers/<sender>')
@@ -287,11 +353,11 @@ def showoffers(sender):
     global OffersDB
     restaurants = getnearestRest(sender)
     print(restaurants)
-    newdf = pd.DataFrame(data = {}, columns = ['ID','restID','dish','qty_sold','qty_left','type','originalPrice','offerPrice','link','restName'])
+    newdf = pd.DataFrame(data = {}, columns = ['ID','restID','dish','qty_sold','qty_left','type','originalPrice','offerPrice','link','restName','tag'])
     for rest in restaurants:
         newdf.append(OffersDB[OffersDB['restName']==rest],ignore_index = True)
     sortedb = OffersDB.sort_values(['offerPrice'],ascending=True)
-    sortedb.drop(['restID','ID','type','qty_left','qty_sold'],axis = 1, inplace = True)
+    sortedb.drop(['restID','ID','type','qty_left','qty_sold','tag'],axis = 1, inplace = True)
     print((sortedb.head(n=10)).to_json(orient = 'records'))
     yield (sortedb.head(n=10)).to_json(orient = 'records')
     '''global OffersDB
@@ -314,11 +380,11 @@ def showPopular(sender):
     global OffersDB
     restaurants = getnearestRest(sender)
     print(restaurants)
-    newdf = pd.DataFrame(data = {}, columns = ['ID','restID','dish','qty_sold','qty_left','type','originalPrice','offerPrice','link','restName'])
+    newdf = pd.DataFrame(data = {}, columns = ['ID','restID','dish','qty_sold','qty_left','type','originalPrice','offerPrice','link','restName','tag'])
     for rest in restaurants:
         newdf.append(OffersDB[OffersDB['restName']==rest],ignore_index = True)
     sortedb = OffersDB.sort_values(['offerPrice'],ascending=True)
-    sortedb.drop(['restID','ID','type','qty_left','qty_sold'],axis = 1, inplace = True)
+    sortedb.drop(['restID','ID','type','qty_left','qty_sold','tag'],axis = 1, inplace = True)
     print((sortedb.head(n=10)).to_json(orient = 'records'))
     yield (sortedb.head(n=10)).to_json(orient = 'records')
     '''global OffersDB
@@ -337,11 +403,11 @@ def showCheap(sender):
     global OffersDB
     restaurants = getnearestRest(sender)
     print(restaurants)
-    newdf = pd.DataFrame(data = {}, columns = ['ID','restID','dish','qty_sold','qty_left','type','originalPrice','offerPrice','link','restName'])
+    newdf = pd.DataFrame(data = {}, columns = ['ID','restID','dish','qty_sold','qty_left','type','originalPrice','offerPrice','link','restName','tag'])
     for rest in restaurants:
         newdf.append(OffersDB[OffersDB['restName']==rest],ignore_index = True)
     sortedb = OffersDB.sort_values(['offerPrice'],ascending=True)
-    sortedb.drop(['restID','ID','type','qty_left','qty_sold'],axis = 1, inplace = True)
+    sortedb.drop(['restID','ID','type','qty_left','qty_sold','tag'],axis = 1, inplace = True)
     print((sortedb.head(n=10)).to_json(orient = 'records'))
     yield (sortedb.head(n=10)).to_json(orient = 'records')
 
