@@ -61,13 +61,14 @@ class Haversine:
 
 #connection with redis-py client
 dir_con = red(host = '0.0.0.0',port = 6379,db = 0)
+
 #connection with pottery client
 pot_con = red.from_url('http://localhost:6379/')
 pot_arc = red.from_url('http://localhost:6379/1')
 
 rest_ids = NextId(key='rest-ids', masters={pot_con})
 
-nodeurl = 'https://719df726.ngrok.io'
+nodeurl = 'https://33464113.ngrok.io'
 
 #string encode with b prefix
 def bytify(strung):
