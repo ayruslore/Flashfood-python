@@ -20,10 +20,10 @@
 - To build a docker image, use the `dockerfile` present in the root directory.
 
 - For running this server, ou can pull the docker image available to docker hub.
-    - Pull : docker pull suryavampire/redpython
-    - Run : docker run -p 4000:4000 suryavampire/redpython
+    - Pull : `docker pull suryavampire/redpython`
+    - Run : `docker run -p 4000:4000 suryavampire/redpython`
 
 - To just run the server locally clone this branch and run the following command : `python3 server.py`
-    - The python server assumes that the redis server is running locally. Tries to connect to 0.0.0.0:6379. If their is a different address, it needs to changed appropriately.
+    - The python server assumes that the redis server is running locally. Tries to connect to `0.0.0.0:6379`. If their is a different address, it needs to changed appropriately.
 
 - To test the server, as in to test the database transactions run the following command : `python3 test.py`. The test code assumes that the python server is running locally. If it not the case then pass the appropriate server address in the code.
